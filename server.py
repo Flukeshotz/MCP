@@ -5,7 +5,18 @@ from docs_tool import append_to_doc, find_or_create_doc, append_to_doc_blocks
 from gmail_tool import create_email_draft
 
 # Create the FastMCP instance
-mcp = FastMCP("Google Docs & Gmail MCP Server")
+# allowed_hosts is required when deployed behind a reverse proxy (e.g. Railway)
+# so that FastMCP's SSE handler accepts requests with the public domain as Host header.
+mcp = FastMCP(
+    "Google Docs & Gmail MCP Server",
+    host="0.0.0.0",
+    port=int(os.environ.get("PORT", 8080)),
+    allowed_hosts=[
+        "web-production-cdc1c.up.railway.app",
+        "localhost",
+        "127.0.0.1",
+    ],
+)
 
 def prompt_approval(action_name: str, payload: dict) -> bool:
     """Prompts the user for approval in the terminal."""
