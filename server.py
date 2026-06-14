@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import sys
 import os
-from docs_tool import append_to_doc
+from docs_tool import append_to_doc, find_or_create_doc, append_to_doc_blocks
 from gmail_tool import create_email_draft
 
 app = FastAPI(title="Google Docs & Gmail MCP Server")
@@ -13,6 +13,13 @@ class DocAppendRequest(BaseModel):
     bold: bool = False
     italic: bool = False
     underline: bool = False
+
+class DocFindOrCreateRequest(BaseModel):
+    title: str
+
+class DocAppendBlocksRequest(BaseModel):
+    doc_id: str
+    blocks: list
 
 class EmailDraftRequest(BaseModel):
     to: str
@@ -42,6 +49,30 @@ def prompt_approval(action_name: str, payload: dict) -> bool:
                 print("Please enter 'y' or 'n'.", file=sys.stderr)
         except EOFError:
             return False
+
+@app.post("/find_or_create_doc")
+def api_find_or_create_doc(request: DocFindOrCreateRequest):
+    payload = request.model_dump()
+    if not prompt_approval("Find or Create Google Doc", payload):
+        raise HTTPException(status_code=403, detail="Action rejected by user")
+        
+    result = find_or_create_doc(request.title)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("message"))
+        
+    return result
+
+@app.post("/append_to_doc_blocks")
+def api_append_to_doc_blocks(request: DocAppendBlocksRequest):
+    payload = request.model_dump()
+    if not prompt_approval("Append Blocks to Google Doc", {"doc_id": request.doc_id, "blocks_count": len(request.blocks)}):
+        raise HTTPException(status_code=403, detail="Action rejected by user")
+        
+    result = append_to_doc_blocks(request.doc_id, request.blocks)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("message"))
+        
+    return result
 
 @app.post("/append_to_doc")
 def api_append_to_doc(request: DocAppendRequest):

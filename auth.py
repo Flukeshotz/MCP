@@ -7,6 +7,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 # If modifying these scopes, delete the file token.json.
 SCOPES = [
     'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/gmail.compose'
 ]
 
