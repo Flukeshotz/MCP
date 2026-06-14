@@ -20,7 +20,7 @@ _security = TransportSecuritySettings(
     allowed_origins=[],
 )
 
-mcp = FastMCP("Google Docs & Gmail MCP Server", security_settings=_security)
+mcp = FastMCP("Google Docs & Gmail MCP Server", transport_security=_security)
 
 def prompt_approval(action_name: str, payload: dict) -> bool:
     """Prompts the user for approval in the terminal."""
