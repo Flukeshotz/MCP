@@ -1,31 +1,11 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import sys
 import os
+from mcp.server.fastmcp import FastMCP
 from docs_tool import append_to_doc, find_or_create_doc, append_to_doc_blocks
 from gmail_tool import create_email_draft
 
-app = FastAPI(title="Google Docs & Gmail MCP Server")
-
-class DocAppendRequest(BaseModel):
-    doc_id: str
-    content: str
-    bold: bool = False
-    italic: bool = False
-    underline: bool = False
-
-class DocFindOrCreateRequest(BaseModel):
-    title: str
-
-class DocAppendBlocksRequest(BaseModel):
-    doc_id: str
-    blocks: list
-
-class EmailDraftRequest(BaseModel):
-    to: str
-    subject: str
-    body: str
-    is_html: bool = False
+# Create the FastMCP instance
+mcp = FastMCP("Google Docs & Gmail MCP Server")
 
 def prompt_approval(action_name: str, payload: dict) -> bool:
     """Prompts the user for approval in the terminal."""
@@ -36,8 +16,6 @@ def prompt_approval(action_name: str, payload: dict) -> bool:
     print(f"Action: {action_name}", file=sys.stderr)
     print(f"Payload: {payload}", file=sys.stderr)
     
-    # We read from sys.stdin to avoid issues if input() gets confused by Uvicorn's loops
-    # Or simply use input() which normally reads from stdin
     while True:
         try:
             choice = input("Approve? (y/n): ").strip().lower()
@@ -50,53 +28,59 @@ def prompt_approval(action_name: str, payload: dict) -> bool:
         except EOFError:
             return False
 
-@app.post("/find_or_create_doc")
-def api_find_or_create_doc(request: DocFindOrCreateRequest):
-    payload = request.model_dump()
+@mcp.tool()
+def find_or_create_doc_tool(title: str) -> dict:
+    """Finds or creates a Google Doc by title."""
+    payload = {"title": title}
     if not prompt_approval("Find or Create Google Doc", payload):
-        raise HTTPException(status_code=403, detail="Action rejected by user")
+        raise Exception("Action rejected by user")
         
-    result = find_or_create_doc(request.title)
+    result = find_or_create_doc(title)
     if result.get("status") == "error":
-        raise HTTPException(status_code=500, detail=result.get("message"))
+        raise Exception(result.get("message"))
         
     return result
 
-@app.post("/append_to_doc_blocks")
-def api_append_to_doc_blocks(request: DocAppendBlocksRequest):
-    payload = request.model_dump()
-    if not prompt_approval("Append Blocks to Google Doc", {"doc_id": request.doc_id, "blocks_count": len(request.blocks)}):
-        raise HTTPException(status_code=403, detail="Action rejected by user")
+@mcp.tool()
+def append_to_doc_blocks_tool(doc_id: str, blocks: list) -> dict:
+    """Appends structured blocks to a Google Doc."""
+    if not prompt_approval("Append Blocks to Google Doc", {"doc_id": doc_id, "blocks_count": len(blocks)}):
+        raise Exception("Action rejected by user")
         
-    result = append_to_doc_blocks(request.doc_id, request.blocks)
+    result = append_to_doc_blocks(doc_id, blocks)
     if result.get("status") == "error":
-        raise HTTPException(status_code=500, detail=result.get("message"))
+        raise Exception(result.get("message"))
         
     return result
 
-@app.post("/append_to_doc")
-def api_append_to_doc(request: DocAppendRequest):
-    payload = request.model_dump()
+@mcp.tool()
+def append_to_doc_tool(doc_id: str, content: str, bold: bool = False, italic: bool = False, underline: bool = False) -> dict:
+    """Appends simple text to a Google Doc."""
+    payload = {"doc_id": doc_id, "content": content, "bold": bold, "italic": italic, "underline": underline}
     if not prompt_approval("Append to Google Doc", payload):
-        raise HTTPException(status_code=403, detail="Action rejected by user")
+        raise Exception("Action rejected by user")
         
-    result = append_to_doc(request.doc_id, request.content, request.bold, request.italic, request.underline)
+    result = append_to_doc(doc_id, content, bold, italic, underline)
     if result.get("status") == "error":
-        raise HTTPException(status_code=500, detail=result.get("message"))
+        raise Exception(result.get("message"))
         
     return result
 
-@app.post("/create_email_draft")
-def api_create_email_draft(request: EmailDraftRequest):
-    payload = request.model_dump()
+@mcp.tool()
+def create_email_draft_tool(to: str, subject: str, body: str, is_html: bool = False) -> dict:
+    """Creates a Gmail Draft."""
+    payload = {"to": to, "subject": subject, "body": body, "is_html": is_html}
     if not prompt_approval("Create Gmail Draft", payload):
-        raise HTTPException(status_code=403, detail="Action rejected by user")
+        raise Exception("Action rejected by user")
         
-    result = create_email_draft(request.to, request.subject, request.body, request.is_html)
+    result = create_email_draft(to, subject, body, is_html)
     if result.get("status") == "error":
-        raise HTTPException(status_code=500, detail=result.get("message"))
+        raise Exception(result.get("message"))
         
     return result
+
+# Get the Starlette app for SSE
+app = mcp.sse_app()
 
 if __name__ == "__main__":
     import uvicorn
