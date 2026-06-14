@@ -4,6 +4,20 @@ from mcp.server.fastmcp import FastMCP
 from docs_tool import append_to_doc, find_or_create_doc, append_to_doc_blocks
 from gmail_tool import create_email_draft
 
+# Build the allowed_hosts list dynamically so the SSE handler accepts requests
+# regardless of which domain Railway assigns or whether they arrive via internal DNS.
+_allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    "*.railway.internal",  # Railway private-network / internal DNS
+]
+
+# RAILWAY_PUBLIC_DOMAIN is injected automatically by Railway (e.g. "myapp.up.railway.app").
+# Add it when present so the public-facing SSE endpoint is also accepted.
+_railway_public_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+if _railway_public_domain:
+    _allowed_hosts.append(_railway_public_domain)
+
 # Create the FastMCP instance
 # allowed_hosts is required when deployed behind a reverse proxy (e.g. Railway)
 # so that FastMCP's SSE handler accepts requests with the public domain as Host header.
@@ -11,11 +25,7 @@ mcp = FastMCP(
     "Google Docs & Gmail MCP Server",
     host="0.0.0.0",
     port=int(os.environ.get("PORT", 8080)),
-    allowed_hosts=[
-        "web-production-cdc1c.up.railway.app",
-        "localhost",
-        "127.0.0.1",
-    ],
+    allowed_hosts=_allowed_hosts,
 )
 
 def prompt_approval(action_name: str, payload: dict) -> bool:
