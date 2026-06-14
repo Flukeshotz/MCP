@@ -1,11 +1,26 @@
 import sys
 import os
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from docs_tool import append_to_doc, find_or_create_doc, append_to_doc_blocks
 from gmail_tool import create_email_draft
 
-# Create the FastMCP instance
-mcp = FastMCP("Google Docs & Gmail MCP Server")
+# When deployed behind Railway's reverse proxy, FastMCP's DNS rebinding
+# protection rejects the real domain in the Host header.
+# We configure TransportSecuritySettings to explicitly allow the Railway host.
+_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[
+        "web-production-cdc1c.up.railway.app",
+        "localhost",
+        "127.0.0.1",
+        "localhost:8080",
+        "127.0.0.1:8080",
+    ],
+    allowed_origins=[],
+)
+
+mcp = FastMCP("Google Docs & Gmail MCP Server", security_settings=_security)
 
 def prompt_approval(action_name: str, payload: dict) -> bool:
     """Prompts the user for approval in the terminal."""
@@ -79,34 +94,8 @@ def create_email_draft_tool(to: str, subject: str, body: str, is_html: bool = Fa
         
     return result
 
-
-# ---------------------------------------------------------------------------
-# Reverse-proxy host-header fix
-# ---------------------------------------------------------------------------
-# FastMCP's SSE handler (mcp/server/sse.py) validates that the Host header
-# is localhost/127.0.0.1. Behind Railway's reverse proxy the real domain
-# ("web-production-cdc1c.up.railway.app") is forwarded in the Host header,
-# which causes a 421 / ValueError.  This thin ASGI middleware rewrites Host
-# to "localhost" before the request reaches the SSE handler so validation
-# passes without any changes to the FastMCP library itself.
-# ---------------------------------------------------------------------------
-class _ForceLocalhostHost:
-    """ASGI middleware: rewrite Host header → localhost for MCP SSE compat."""
-
-    def __init__(self, app):
-        self._app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http":
-            scope["headers"] = [
-                (b"host", b"localhost") if k == b"host" else (k, v)
-                for k, v in scope.get("headers", [])
-            ]
-        await self._app(scope, receive, send)
-
-
-# Get the Starlette app for SSE and wrap with the host-fix middleware
-app = _ForceLocalhostHost(mcp.sse_app())
+# Get the Starlette app for SSE
+app = mcp.sse_app()
 
 if __name__ == "__main__":
     import uvicorn
